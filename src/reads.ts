@@ -1,14 +1,27 @@
-import type { MCPToolCallResult } from "@oh-my-pi/pi-coding-agent/mcp";
-import { findDriveTool } from "./core";
-import { driveErrorText, isJsonRecord, MAX_RENDERED_CHARS, truncate } from "./render";
+import {
+	cellText,
+	columnLetters,
+	createDriveApi,
+	day,
+	type DriveKind,
+	FOLDER_MIME,
+	fetchedFolderItems,
+	fetchedText,
+	type JsonRecord,
+	KIND_FILTER,
+	kindLabel,
+	quoteSheetName,
+	records,
+	SHEET_MIME,
+	SLIDES_MIME,
+	text,
+} from "./drive";
+import { isJsonRecord, MAX_RENDERED_CHARS, truncate } from "./render";
 import type { DriveCore } from "./types";
 
 /** Curated `xd://gdrive` reads: ids or URLs interchangeably, shared-drive names, and the exact op that opens each listed item. */
 export const DRIVE_READ_OPS = ["profile", "drives", "search", "recent", "list", "read", "info", "comments", "sheet", "slides"] as const;
 export type DriveReadOp = (typeof DRIVE_READ_OPS)[number];
-
-export const DRIVE_KINDS = ["doc", "sheet", "slides", "pdf", "folder", "image"] as const;
-export type DriveKind = (typeof DRIVE_KINDS)[number];
 
 export interface DriveReadInput {
 	/** File id or Drive/Docs/Sheets/Slides URL. */
@@ -34,33 +47,9 @@ export interface DriveReads {
 	run(op: DriveReadOp, input: DriveReadInput, signal?: AbortSignal): Promise<string>;
 }
 
-type JsonRecord = Record<string, unknown>;
-
 export function isDriveReadOp(op: string): op is DriveReadOp {
 	return DRIVE_READ_OPS.some(candidate => candidate === op);
 }
-
-const NATIVE = "application/vnd.google-apps.";
-const FOLDER_MIME = `${NATIVE}folder`;
-const SHEET_MIME = `${NATIVE}spreadsheet`;
-const SLIDES_MIME = `${NATIVE}presentation`;
-
-const KIND_FILTER: Record<DriveKind, string> = {
-	doc: `mimeType = '${NATIVE}document'`,
-	sheet: `mimeType = '${SHEET_MIME}'`,
-	slides: `mimeType = '${SLIDES_MIME}'`,
-	pdf: "mimeType = 'application/pdf'",
-	folder: `mimeType = '${FOLDER_MIME}'`,
-	image: "mimeType contains 'image/'",
-};
-
-const KIND_LABEL: Record<string, string> = {
-	[`${NATIVE}document`]: "Google Doc",
-	[SHEET_MIME]: "Google Sheet",
-	[SLIDES_MIME]: "Google Slides",
-	[FOLDER_MIME]: "Folder",
-	"application/pdf": "PDF",
-};
 
 /** Room left for headers and continuation hints inside one rendered response. */
 const READ_CHUNK_CHARS = MAX_RENDERED_CHARS - 2_000;
@@ -74,36 +63,10 @@ function isDriveId(ref: string): boolean {
 	return /^[A-Za-z0-9_-]{10,}$/u.test(ref);
 }
 
-function text(record: JsonRecord, ...keys: string[]): string | undefined {
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value === "string" && value.trim()) return value.trim();
-	}
-	return undefined;
-}
-
-function records(value: unknown): JsonRecord[] {
-	return Array.isArray(value) ? value.filter(isJsonRecord) : [];
-}
-
-/** Folder children that `fetch` returns as JSON text; undefined when the text is not that listing. */
-function fetchedFolderItems(content: string): JsonRecord[] | undefined {
-	try {
-		const listing: unknown = JSON.parse(content);
-		return isJsonRecord(listing) && Array.isArray(listing.files) ? records(listing.files) : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
 function required(op: DriveReadOp, field: keyof DriveReadInput, value: string | undefined): string {
 	const trimmed = value?.trim();
 	if (!trimmed) throw new Error(`Google Drive "${op}" needs \`${field}\`.`);
 	return trimmed;
-}
-
-function kindLabel(mime: string | undefined): string {
-	return (mime && KIND_LABEL[mime]) ?? mime ?? "file";
 }
 
 /** The `xd://gdrive` call that opens a listed item, as the model writes it. */
@@ -118,10 +81,6 @@ function openOp(id: string, mime: string | undefined): string {
 		default:
 			return JSON.stringify({ op: "read", file: id });
 	}
-}
-
-function day(value: string | undefined): string | undefined {
-	return value?.slice(0, 10);
 }
 
 /** One line per search/recent/folder entry: linked title, kind, modification day, and the op that opens it. */
@@ -171,19 +130,6 @@ function renderComments(file: string, payload: JsonRecord): string {
 	return lines.join("\n");
 }
 
-/** A1 column letters for a 1-based column number. */
-function columnLetters(column: number): string {
-	let letters = "";
-	for (let rest = column; rest > 0; rest = Math.floor((rest - 1) / 26)) {
-		letters = String.fromCharCode(65 + ((rest - 1) % 26)) + letters;
-	}
-	return letters;
-}
-
-function quoteSheetName(name: string): string {
-	return `'${name.replace(/'/gu, "''")}'`;
-}
-
 function renderSheetTabs(file: string, payload: JsonRecord): string {
 	const properties = isJsonRecord(payload.properties) ? payload.properties : {};
 	const lines = [`# ${text(properties, "title") ?? file}`];
@@ -201,11 +147,6 @@ function renderSheetTabs(file: string, payload: JsonRecord): string {
 		lines.push(`- ${name} — ${rows}×${columns}${type && type !== "GRID" ? ` · ${type}` : ""} · \`${JSON.stringify({ op: "sheet", file, range })}\``);
 	}
 	return lines.join("\n");
-}
-
-function cellText(value: unknown): string {
-	if (value === null || value === undefined) return "";
-	return String(value).replace(/[\t\r\n]+/gu, " ");
 }
 
 function renderSheetValues(payload: JsonRecord): string {
@@ -268,7 +209,7 @@ function renderInfo(payload: JsonRecord): string {
 /** One chunk of a file's text with the exact op that continues it. */
 function renderFileText(file: string, payload: JsonRecord, offset: number): string {
 	const mime = text(payload, "mime_type");
-	const content = typeof payload.content === "string" ? payload.content.replace(/^\uFEFF/u, "").replace(/\r\n/gu, "\n") : "";
+	const content = fetchedText(payload);
 	const header = [`# ${text(payload, "display_title", "title") ?? file}`];
 	// `fetch` reports the export format (text/plain for Docs and Slides), not the file's kind.
 	const meta = [mime === "text/plain" ? undefined : kindLabel(mime), day(text(payload, "modified_time")) ? `modified ${day(text(payload, "modified_time"))}` : undefined, text(payload, "display_url", "url")];
@@ -290,52 +231,15 @@ function renderFileText(file: string, payload: JsonRecord, offset: number): stri
 	return parts.join("\n\n");
 }
 
-interface SharedDrive {
-	id: string;
-	name: string;
-}
-
 export function createDriveReads(core: DriveCore): DriveReads {
-	let sharedDrives: Promise<SharedDrive[]> | undefined;
-
-	async function call(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<JsonRecord> {
-		const tools = await core.listTools(signal);
-		const tool = findDriveTool(tools, name);
-		if (!tool) {
-			throw new Error(
-				`The ChatGPT Google Drive app does not expose \`${name}\`. Available tools: ${tools.map(candidate => candidate.name).join(", ") || "none"}.`,
-			);
-		}
-		const result: MCPToolCallResult = await core.callTool(tool.name, args, signal);
-		if (result.isError) throw new Error(driveErrorText(result));
-		if (!isJsonRecord(result.structuredContent)) {
-			throw new Error(`Google Drive \`${name}\` returned no structured payload:\n${result.content.map(block => (block.type === "text" ? block.text : "")).join("\n")}`);
-		}
-		return result.structuredContent;
-	}
-
-	function loadSharedDrives(signal?: AbortSignal): Promise<SharedDrive[]> {
-		if (!sharedDrives) {
-			const pending = call("list_drives", {}, signal).then(payload =>
-				records(payload.drives).flatMap(drive => {
-					const id = text(drive, "id");
-					return id ? [{ id, name: text(drive, "name") ?? id }] : [];
-				}),
-			);
-			sharedDrives = pending;
-			pending.catch(() => {
-				if (sharedDrives === pending) sharedDrives = undefined;
-			});
-		}
-		return sharedDrives;
-	}
+	const { call, sharedDrives } = createDriveApi(core);
 
 	/** `list_folder` takes only folder URLs or `root`; ids and shared-drive names are turned into one. */
 	async function folderUrl(selector: string | undefined, signal?: AbortSignal): Promise<string> {
 		const folder = selector?.trim();
 		if (!folder || /^(?:root|my drive)$/iu.test(folder)) return "root";
 		if (isUrl(folder)) return folder;
-		const drives = await loadSharedDrives(signal);
+		const drives = await sharedDrives(signal);
 		const named = drives.filter(drive => drive.name.toLowerCase() === folder.toLowerCase());
 		if (named.length === 1 && named[0]) return `https://drive.google.com/drive/folders/${named[0].id}`;
 		if (named.length === 0 && isDriveId(folder)) return `https://drive.google.com/drive/folders/${folder}`;
@@ -354,7 +258,7 @@ export function createDriveReads(core: DriveCore): DriveReads {
 					return `Google account: ${name ?? "unknown name"}${email ? ` <${email}>` : ""}${text(profile, "workspace_name") ? ` · ${text(profile, "workspace_name")}` : ""}`;
 				}
 				case "drives": {
-					const drives = await loadSharedDrives(signal);
+					const drives = await sharedDrives(signal);
 					return [
 						"Drives:",
 						`- My Drive — \`${JSON.stringify({ op: "list", folder: "root" })}\``,

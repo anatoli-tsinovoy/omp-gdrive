@@ -3,7 +3,8 @@ import type { MCPToolDefinition } from "@oh-my-pi/pi-coding-agent/mcp";
 import { driveCore, findDriveTool } from "./core";
 import { runDriveLogin } from "./login";
 import driveToolDescription from "./prompts/gdrive-tool.md" with { type: "text" };
-import { createDriveReads, DRIVE_KINDS, DRIVE_READ_OPS, type DriveReadInput, type DriveReadOp, type DriveReads, isDriveReadOp } from "./reads";
+import { DRIVE_KINDS } from "./drive";
+import { createDriveReads, DRIVE_READ_OPS, type DriveReadInput, type DriveReadOp, type DriveReads, isDriveReadOp } from "./reads";
 import { driveToolDisplayName, renderDriveToolList, renderDriveToolSchema, renderMcpResult } from "./render";
 import type { ChatGPTAccount, DriveCore } from "./types";
 

@@ -1,6 +1,6 @@
 # omp-gdrive
 
-An OMP plugin that reaches Google Drive, Docs, Sheets, and Slides through the **ChatGPT Google Drive app**. It signs in to ChatGPT with its own OAuth login and talks to the ChatGPT apps MCP gateway (`https://chatgpt.com/backend-api/ps/mcp`). Every Drive operation, read or write, goes through one discoverable `xd://gdrive` device. You don't create a Google Cloud project or OAuth client.
+An OMP plugin that reaches Google Drive, Docs, Sheets, and Slides through the **ChatGPT Google Drive app**. It signs in to ChatGPT with its own OAuth login and talks to the ChatGPT apps MCP gateway (`https://chatgpt.com/backend-api/ps/mcp`). Every Drive operation, read or write, goes through one discoverable `xd://gdrive` device, and a read-only `gdrive://` URL scheme exposes Drive to OMP's `read`, `glob`, and `grep` tools. You don't create a Google Cloud project or OAuth client.
 
 ## Install
 
@@ -97,6 +97,31 @@ Any other Drive app tool is called directly:
   - Tools from other ChatGPT connectors are never listed or callable.
 
 Confirm with the user before editing, commenting on, creating, moving, sharing, or deleting files, unless they asked for that exact action.
+
+## `gdrive://` files
+
+OMP's `read`, `glob`, and `grep` tools also see Drive as a read-only tree of files:
+
+| URL | Reads as |
+| --- | --- |
+| `gdrive://` | My Drive and the shared drives |
+| `gdrive://My Drive/Projects/` | a folder listing; shared drives go by name: `gdrive://Team Drive/…` |
+| `gdrive://My Drive/Projects/Q3 plan.gdoc` | the file's text; `:N-M` selects lines |
+| `gdrive://id/<id>[/names…]` | any file or folder by id, with names continuing below a folder |
+| `gdrive://search?q=roadmap&kind=doc&limit=10` | search results, each with its `gdrive://id/…` URL; also takes `filter` and `viewed` |
+
+```text
+read  gdrive://My Drive/
+glob  gdrive://My Drive/**/*.gsheet
+grep  "launch date" gdrive://id/1AbC…/
+```
+
+- **Names** follow Drive for desktop: Docs, Sheets, Slides, Forms, and Drawings end in `.gdoc`, `.gsheet`, `.gslides`, `.gform`, `.gdraw`. A `/` in a title becomes `_`. Titles that collide within a folder, ignoring case, carry `~<id>` before the extension. Lookups match exactly first, then by a unique case-insensitive match.
+- **Content:** a `.gsheet` reads as every tab, each under a `## Tab` heading with its full grid as TSV. Images, audio, video, and shortcuts read as a one-line note with their link instead of being fetched. Everything else is the app's `fetch` text.
+- **Folders** list at most 1,000 items; the app's `list_folder` has no paging.
+- **Caching:** listings and texts are kept for 60 seconds, so a `grep` retried after OMP's 30-second grep timeout continues from where it stopped.
+- **Cost:** `grep` fetches every file under its path, and each fetch can show up in the file owner's audit log. Scope it to a folder, or find files with `gdrive://search` first. `glob` needs only folder listings.
+- **Read-only:** OMP refuses `write` and `edit` on `gdrive://`; changes go through `xd://gdrive`. The scheme is registered while an OMP session is running, and loading fails if another plugin already owns `gdrive://`.
 
 ## Included prompts
 
