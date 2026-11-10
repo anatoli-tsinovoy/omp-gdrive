@@ -1,0 +1,53 @@
+{
+  "name": "omp-gdrive",
+  "version": "0.1.0",
+  "description": "Google Drive for OMP through the ChatGPT Google Drive app: one xd://gdrive device for Drive, Docs, Sheets, and Slides, with the plugin's own ChatGPT sign-in",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anatoli-tsinovoy/omp-gdrive.git"
+  },
+  "files": [
+    "src",
+    "skills",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "tsgo -p tsconfig.json --noEmit",
+    "test": "bun test"
+  },
+  "omp": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "peerDependencies": {
+    "@oh-my-pi/pi-ai": ">=18.18.1",
+    "@oh-my-pi/pi-coding-agent": ">=18.18.1",
+    "@oh-my-pi/pi-tui": ">=18.18.1"
+  },
+  "peerDependenciesMeta": {
+    "@oh-my-pi/pi-ai": {
+      "optional": true
+    },
+    "@oh-my-pi/pi-coding-agent": {
+      "optional": true
+    },
+    "@oh-my-pi/pi-tui": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@oh-my-pi/pi-ai": "18.18.1",
+    "@oh-my-pi/pi-coding-agent": "18.18.1",
+    "@oh-my-pi/pi-tui": "18.18.1",
+    "@types/bun": "^1.3.14",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2"
+  }
+}
