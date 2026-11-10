@@ -1,6 +1,6 @@
 {
   "name": "omp-gdrive",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Google Drive for OMP through the ChatGPT Google Drive app: one xd://gdrive device for Drive, Docs, Sheets, and Slides plus read-only gdrive:// URLs for read, glob, and grep, with the plugin's own ChatGPT sign-in",
   "type": "module",
   "license": "MIT",
