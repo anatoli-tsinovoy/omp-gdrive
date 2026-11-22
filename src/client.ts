@@ -11,7 +11,6 @@ import type {
 	MCPToolDefinition,
 } from "@oh-my-pi/pi-coding-agent/mcp";
 import { MCPTransportError } from "@oh-my-pi/pi-coding-agent/mcp/errors";
-import { HttpTransport } from "@oh-my-pi/pi-coding-agent/mcp/transports/http";
 import type { ChatGPTAuth } from "./credentials";
 import { DriveAuthError } from "./errors";
 import { CHATGPT_APPS_MCP_URL, type ChatGPTCredential, DRIVE_CONNECTOR_ID } from "./types";
@@ -157,45 +156,36 @@ export class DriveGatewayClient {
 
 	async #open(credential: ChatGPTCredential, signal?: AbortSignal): Promise<GatewayConnection> {
 		let current = credential;
-		let connection: MCPServerConnection;
-		try {
-			connection = await this.#connect(current, signal);
-		} catch (error) {
-			if (!isHttpAuthFailure(error)) throw error;
-			current = await this.#auth.recover(current.access, signal);
-			try {
-				connection = await this.#connect(current, signal);
-			} catch (retryError) {
-				if (isHttpAuthFailure(retryError)) throw rejectedLogin(retryError);
-				throw retryError;
-			}
-		}
-		const entry: GatewayConnection = { connection, access: current.access, active: 0, retired: false };
-		if (connection.transport instanceof HttpTransport) {
-			connection.transport.onAuthError = async () => {
-				const recovered = await this.#auth.recover(entry.access);
-				entry.access = recovered.access;
-				return gatewayHeaders(recovered);
-			};
-		}
-		return entry;
-	}
-
-	#connect(credential: ChatGPTCredential, signal?: AbortSignal): Promise<MCPServerConnection> {
+		let entry: GatewayConnection | undefined;
 		const config: MCPHttpServerConfig = {
 			type: "http",
 			url: this.#endpoint,
 			headerPolicy: "origin-locked",
-			headers: gatewayHeaders(credential),
+			headers: gatewayHeaders(current),
 		};
-		return connectToServer("gdrive", config, {
-			...(signal ? { signal } : {}),
-			onNotification: method => {
-				if (method !== "notifications/tools/list_changed") return;
-				this.#tools = undefined;
-				this.#onToolsChanged?.();
-			},
-		});
+		let connection: MCPServerConnection;
+		try {
+			connection = await connectToServer("gdrive", config, {
+				...(signal ? { signal } : {}),
+				live: true,
+				onAuthError: async () => {
+					current = await this.#auth.recover(current.access, entry ? undefined : signal);
+					if (entry) entry.access = current.access;
+					return gatewayHeaders(current);
+				},
+				onNotification: method => {
+					if (method !== "notifications/tools/list_changed") return;
+					this.#tools = undefined;
+					this.#onToolsChanged?.();
+				},
+			});
+		} catch (error) {
+			if (isHttpAuthFailure(error)) throw rejectedLogin(error);
+			throw error;
+		}
+		const opened: GatewayConnection = { connection, access: current.access, active: 0, retired: false };
+		entry = opened;
+		return opened;
 	}
 
 	#retire(entry: GatewayConnection): Promise<void> {

@@ -1,7 +1,7 @@
 {
   "name": "omp-gdrive",
-  "version": "0.2.0",
-  "description": "Google Drive for OMP through the ChatGPT Google Drive app: one xd://gdrive device for Drive, Docs, Sheets, and Slides plus read-only gdrive:// URLs for read, glob, and grep, with the plugin's own ChatGPT sign-in",
+  "version": "0.2.1",
+  "description": "Google Drive for OMP through the ChatGPT Google Drive app: the gdrive Bash command for Drive, Docs, Sheets, and Slides plus read-only gdrive:// URLs for read, glob, and grep, with the plugin's own ChatGPT sign-in",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -25,12 +25,13 @@
     ]
   },
   "engines": {
-    "bun": ">=1.3.14"
+    "bun": ">=1.4.4"
   },
   "peerDependencies": {
-    "@oh-my-pi/pi-ai": ">=18.18.1",
-    "@oh-my-pi/pi-coding-agent": ">=18.18.1",
-    "@oh-my-pi/pi-tui": ">=18.18.1"
+    "@oh-my-pi/pi-ai": ">=19.1.0",
+    "@oh-my-pi/pi-coding-agent": ">=19.1.0",
+    "@oh-my-pi/pi-tui": ">=19.1.0",
+    "@oh-my-pi/pi-utils": ">=19.1.0"
   },
   "peerDependenciesMeta": {
     "@oh-my-pi/pi-ai": {
@@ -41,12 +42,17 @@
     },
     "@oh-my-pi/pi-tui": {
       "optional": true
+    },
+    "@oh-my-pi/pi-utils": {
+      "optional": true
     }
   },
   "devDependencies": {
-    "@oh-my-pi/pi-ai": "18.18.1",
-    "@oh-my-pi/pi-coding-agent": "18.18.1",
-    "@oh-my-pi/pi-tui": "18.18.1",
+    "@oh-my-pi/pi-ai": "19.1.0",
+    "@oh-my-pi/pi-coding-agent": "19.1.0",
+    "@oh-my-pi/pi-natives": "19.1.0",
+    "@oh-my-pi/pi-tui": "19.1.0",
+    "@oh-my-pi/pi-utils": "19.1.0",
     "@types/bun": "^1.3.14",
     "@typescript/native-preview": "7.0.0-dev.20260707.2"
   }

@@ -4,7 +4,7 @@ import { driveCore } from "./core";
 import { registerDriveProtocol } from "./protocol";
 import { registerDriveTool } from "./tool";
 
-/** Sessions in this process sharing the `driveCore` gateway connection and the global `gdrive://` handler (subagents load the plugin too). */
+/** Sessions in this process share `driveCore` and the global `gdrive://` handler (subagents load the plugin too). */
 let activeSessions = 0;
 let releaseProtocol: (() => void) | undefined;
 

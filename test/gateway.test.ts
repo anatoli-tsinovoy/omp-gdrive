@@ -1,19 +1,24 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import type { OAuthCredentials } from "@oh-my-pi/pi-ai/oauth/types";
+import { disposeLocalMcpHost } from "@oh-my-pi/pi-coding-agent/mcp/host/local";
 import { createDriveCore } from "../src/core";
 import { ChatGPTCredentialStore, type ChatGPTOAuthFlow } from "../src/credentials";
 import { DriveAuthError, DriveNotConnectedError } from "../src/errors";
 import type { ChatGPTCredential } from "../src/types";
-import { createFakeGateway, type FakeGateway } from "./fixtures/fake-mcp";
+import { FAKE_GATEWAY_TOOLS, createFakeGateway, type FakeGateway } from "./fixtures/fake-mcp";
 
 const HOUR = 3_600_000;
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
 	for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+});
+
+afterAll(async () => {
+	await disposeLocalMcpHost();
 });
 
 async function tempStore(): Promise<ChatGPTCredentialStore> {
@@ -55,6 +60,7 @@ function bearerTokens(fake: FakeGateway): Array<string | null> {
 	return fake.requests.map(request => request.authorization?.replace(/^Bearer /u, "") ?? null);
 }
 
+
 describe("Google Drive over the ChatGPT apps gateway", () => {
 	test("exposes only the Drive connector's tools and refuses other gateway tools", async () => {
 		const fake = gateway();
@@ -69,7 +75,66 @@ describe("Google Drive over the ChatGPT apps gateway", () => {
 		const result = await core.callTool("google_drive.get_profile", {});
 		expect(result.structuredContent).toMatchObject({ email: "ada@work.example" });
 		expect(fake.requests.every(request => request.accountId === "acct-work")).toBe(true);
+		expect(fake.requests.every(request => request.productSku === "codex")).toBe(true);
+		expect(fake.requests.every(request => request.originator === "omp")).toBe(true);
 		expect(fake.requests.filter(request => request.method === "tools/call")).toHaveLength(1);
+	});
+
+	test("a tools/list_changed notification invalidates the connector's cached list", async () => {
+		const fake = gateway();
+		const store = await tempStore();
+		await store.save(credential());
+		let changes = 0;
+		const changed = Promise.withResolvers<void>();
+		const core = createDriveCore({
+			auth: { store, flow: noRefresh() },
+			gateway: {
+				endpoint: fake.endpoint,
+				onToolsChanged: () => {
+					changes++;
+					changed.resolve();
+				},
+			},
+		});
+		cleanups.push(() => core.closeAll());
+
+		await core.listTools();
+		await fake.waitForNotificationListener();
+		const before = fake.requests.filter(request => request.method === "tools/list").length;
+		fake.setTools(FAKE_GATEWAY_TOOLS.map(tool =>
+			tool.name === "google_drive.fetch" ? { ...tool, description: "Updated readable file text." } : tool,
+		));
+		fake.notifyToolsChanged();
+		await changed.promise;
+		expect(changes).toBe(1);
+
+		expect((await core.listTools()).find(tool => tool.name === "google_drive.fetch")?.description).toBe(
+			"Updated readable file text.",
+		);
+		expect(fake.requests.filter(request => request.method === "tools/list")).toHaveLength(before + 1);
+	}, 30_000);
+
+	test("origin-locked gateway headers are stripped on cross-origin redirects", async () => {
+		const target = gateway();
+		const redirect = gateway({ redirectTo: target.endpoint });
+		const store = await tempStore();
+		await store.save(credential());
+		const core = createDriveCore({ auth: { store, flow: noRefresh() }, gateway: { endpoint: redirect.endpoint } });
+		cleanups.push(() => core.closeAll());
+
+		await core.callTool("google_drive.get_profile", {});
+
+		expect(redirect.requests.some(request => request.authorization === "Bearer access-1")).toBe(true);
+		expect(target.requests.length).toBeGreaterThan(0);
+		expect(
+			target.requests.every(
+				request =>
+					request.authorization === null &&
+					request.accountId === null &&
+					request.productSku === null &&
+					request.originator === null,
+			),
+		).toBe(true);
 	});
 
 	test("an expired login refreshes before connecting and persists the rotated grant privately", async () => {
@@ -89,25 +154,37 @@ describe("Google Drive over the ChatGPT apps gateway", () => {
 		expect((await stat(path.dirname(store.filePath))).mode & 0o777).toBe(0o700);
 	});
 
-	test("a 401 from the gateway refreshes once and retries without interactive sign-in", async () => {
-		const rejected = new Set<string>();
-		const fake = gateway({ rejectedTokens: rejected, onToolCall: () => ({ content: [{ type: "text", text: "Action completed." }], structuredContent: null }) });
-		const store = await tempStore();
-		await store.save(credential());
-		const flow = refreshFlow(() => ({ access: "access-2", refresh: "refresh-2", expires: Date.now() + HOUR, accountId: "acct-work" }));
-		const core = createDriveCore({ auth: { store, flow }, gateway: { endpoint: fake.endpoint } });
-		cleanups.push(() => core.closeAll());
+	test("401 and 403 gateway failures refresh once and retry without interactive sign-in", async () => {
+		for (const rejectedStatus of [401, 403] as const) {
+			const rejected = new Set<string>();
+			const fake = gateway({
+				rejectedTokens: rejected,
+				rejectedStatus,
+				onToolCall: () => ({ content: [{ type: "text", text: "Action completed." }], structuredContent: null }),
+			});
+			const store = await tempStore();
+			await store.save(credential());
+			const flow = refreshFlow(() => ({
+				access: "access-2",
+				refresh: "refresh-2",
+				expires: Date.now() + HOUR,
+				accountId: "acct-work",
+			}));
+			const core = createDriveCore({ auth: { store, flow }, gateway: { endpoint: fake.endpoint } });
+			cleanups.push(() => core.closeAll());
 
-		await core.listTools();
-		rejected.add("access-1");
-		const result = await core.callTool("google_drive.get_profile", {});
+			await core.listTools();
+			rejected.add("access-1");
+			const result = await core.callTool("google_drive.get_profile", {});
 
-		expect(result.isError).toBeFalsy();
-		expect("structuredContent" in result).toBe(false);
-		expect(flow.refreshed).toHaveLength(1);
-		expect(bearerTokens(fake).at(-1)).toBe("access-2");
-		expect((await store.load())?.refresh).toBe("refresh-2");
-	});
+			expect(result.isError).toBeFalsy();
+			expect("structuredContent" in result).toBe(false);
+			expect(flow.refreshed).toHaveLength(1);
+			expect(fake.requests.filter(request => request.method === "tools/call")).toHaveLength(2);
+			expect(bearerTokens(fake).at(-1)).toBe("access-2");
+			expect((await store.load())?.refresh).toBe("refresh-2");
+		}
+	}, 30_000);
 
 	test("a refresh that switches ChatGPT workspace is rejected and leaves the stored login intact", async () => {
 		const fake = gateway();

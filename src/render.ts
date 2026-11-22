@@ -23,6 +23,10 @@ function renderContentBlock(block: MCPToolCallResult["content"][number]): string
 			return block.text.trim() === FILLER_TEXT ? "" : block.text;
 		case "image":
 			return `[MCP image omitted: ${block.mimeType}]`;
+		case "audio":
+			return `[MCP audio omitted: ${block.mimeType}]`;
+		case "resource_link":
+			return `Resource link: ${block.title ?? block.name ?? block.uri} (${block.uri})`;
 		case "resource": {
 			const body = block.resource.text ?? `[Binary resource omitted: ${block.resource.mimeType ?? "unknown type"}]`;
 			return `Resource: ${block.resource.uri}\n\n${body}`;

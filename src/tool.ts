@@ -8,8 +8,8 @@ import { createDriveReads, DRIVE_READ_OPS, type DriveReadInput, type DriveReadOp
 import { driveToolDisplayName, renderDriveToolList, renderDriveToolSchema, renderMcpResult } from "./render";
 import type { ChatGPTAccount, DriveCore } from "./types";
 
-const DEVICE_OPS = ["call", "tools", "schema", "login"] as const;
-export type DriveToolOperation = (typeof DEVICE_OPS)[number] | DriveReadOp;
+const TOOL_OPS = ["call", "tools", "schema", "login"] as const;
+export type DriveToolOperation = (typeof TOOL_OPS)[number] | DriveReadOp;
 
 export interface DriveToolInput extends DriveReadInput {
 	op?: DriveToolOperation;
@@ -18,7 +18,7 @@ export interface DriveToolInput extends DriveReadInput {
 }
 
 export interface DriveOperationOptions {
-	/** Curated reads; pass one instance per device so shared-drive lookups are remembered across calls. */
+	/** Curated reads; pass one instance per registered tool so shared-drive lookups persist across calls. */
 	reads?: DriveReads;
 	login?: () => Promise<ChatGPTAccount>;
 	signal?: AbortSignal;
@@ -47,7 +47,7 @@ async function requireTool(core: DriveCore, name: string | undefined, operation:
 	return tool;
 }
 
-/** Dispatch one `xd://gdrive` operation; the gateway is contacted only when an operation needs it. */
+/** Dispatch one `gdrive` operation; the gateway is contacted only when an operation needs it. */
 export async function executeDriveOperation(
 	core: DriveCore,
 	input: DriveToolInput,
@@ -90,7 +90,7 @@ export function driveApproval(args: unknown): "read" | "write" {
 	return op === "call" && typeof tool === "string" && READ_ONLY_DRIVE_TOOL.test(tool.trim()) ? "read" : "write";
 }
 
-/** One discoverable `xd://gdrive` device; no Drive tool schemas enter context until the model asks for them. */
+/** One discoverable `gdrive` Bash command; connector schemas remain on demand through `schema`. */
 export function registerDriveTool(pi: ExtensionAPI, core: DriveCore = driveCore): void {
 	const z = pi.zod;
 	const reads = createDriveReads(core);
@@ -102,7 +102,7 @@ export function registerDriveTool(pi: ExtensionAPI, core: DriveCore = driveCore)
 		approval: driveApproval,
 		parameters: z
 			.object({
-				op: z.enum([...DEVICE_OPS, ...DRIVE_READ_OPS]).default("call"),
+				op: z.enum([...TOOL_OPS, ...DRIVE_READ_OPS]).default("call"),
 				tool: z.string().optional().describe("Drive app tool name, e.g. batch_update_document; required for call and schema."),
 				args: z.record(z.string(), z.unknown()).optional().describe("Arguments for the named tool, per its schema."),
 				file: z.string().optional().describe("read/info/comments/sheet/slides: file id or Drive/Docs/Sheets/Slides URL."),

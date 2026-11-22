@@ -67,6 +67,18 @@ test("call shows the structured payload once, without the filler text or fetch's
 	expect(text).not.toContain("Action completed.");
 	expect(text.match(/"content"/gu)).toHaveLength(1);
 });
+test("renders newer MCP audio and resource-link content blocks", async () => {
+	const core = fakeCore({
+		content: [
+			{ type: "audio", data: "AAAA", mimeType: "audio/wav" },
+			{ type: "resource_link", uri: "gdrive://id/doc1", title: "Plan" },
+		],
+	});
+	const text = textOf(await executeDriveOperation(core, { tool: "fetch", args: { url: "x" } }));
+	expect(text).toContain("[MCP audio omitted: audio/wav]");
+	expect(text).toContain("Resource link: Plan (gdrive://id/doc1)");
+});
+
 
 test("unknown tools are refused before any call, listing what exists", async () => {
 	const core = fakeCore({ content: [] });

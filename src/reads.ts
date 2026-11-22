@@ -19,7 +19,7 @@ import {
 import { isJsonRecord, MAX_RENDERED_CHARS, truncate } from "./render";
 import type { DriveCore } from "./types";
 
-/** Curated `xd://gdrive` reads: ids or URLs interchangeably, shared-drive names, and the exact op that opens each listed item. */
+/** Curated `gdrive` reads: ids or URLs interchangeably, shared-drive names, and the exact op that opens each listed item. */
 export const DRIVE_READ_OPS = ["profile", "drives", "search", "recent", "list", "read", "info", "comments", "sheet", "slides"] as const;
 export type DriveReadOp = (typeof DRIVE_READ_OPS)[number];
 
@@ -69,7 +69,7 @@ function required(op: DriveReadOp, field: keyof DriveReadInput, value: string | 
 	return trimmed;
 }
 
-/** The `xd://gdrive` call that opens a listed item, as the model writes it. */
+/** The `gdrive` argument object that opens a listed item, as the model writes it. */
 function openOp(id: string, mime: string | undefined): string {
 	switch (mime) {
 		case FOLDER_MIME:

@@ -3,7 +3,7 @@ import { findDriveTool } from "./core";
 import { driveErrorText, isJsonRecord } from "./render";
 import type { DriveCore } from "./types";
 
-/** Drive app calls and payload helpers shared by the `xd://gdrive` reads and `gdrive://` URLs. */
+/** Drive app calls and payload helpers shared by the `gdrive` tool and `gdrive://` URLs. */
 export type JsonRecord = Record<string, unknown>;
 
 export const DRIVE_KINDS = ["doc", "sheet", "slides", "pdf", "folder", "image"] as const;

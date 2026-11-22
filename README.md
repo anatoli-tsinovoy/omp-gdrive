@@ -1,6 +1,6 @@
 # omp-gdrive
 
-An OMP plugin that reaches Google Drive, Docs, Sheets, and Slides through the **ChatGPT Google Drive app**. It signs in to ChatGPT with its own OAuth login and talks to the ChatGPT apps MCP gateway (`https://chatgpt.com/backend-api/ps/mcp`). Every Drive operation, read or write, goes through one discoverable `xd://gdrive` device, and a read-only `gdrive://` URL scheme exposes Drive to OMP's `read`, `glob`, and `grep` tools. You don't create a Google Cloud project or OAuth client.
+An OMP plugin that reaches Google Drive, Docs, Sheets, and Slides through the **ChatGPT Google Drive app**. It signs in to ChatGPT with its own OAuth login and talks to the ChatGPT apps MCP gateway (`https://chatgpt.com/backend-api/ps/mcp`). Every Drive operation, read or write, goes through the discoverable `gdrive` Bash command, and a read-only `gdrive://` URL scheme exposes Drive to OMP's `read`, `glob`, and `grep` tools. You don't create a Google Cloud project or OAuth client.
 
 ## Install
 
@@ -8,7 +8,7 @@ An OMP plugin that reaches Google Drive, Docs, Sheets, and Slides through the **
 omp plugin install github:anatoli-tsinovoy/omp-gdrive
 ```
 
-OMP accepts `github:user/repo` plugin sources. Restart OMP if the current session does not discover the plugin. Requires OMP 18.18.1 or newer.
+OMP accepts `github:user/repo` plugin sources. Restart OMP if the current session does not discover the plugin. Requires OMP 19.1.0 or newer.
 
 ## Setup
 
@@ -48,14 +48,14 @@ Other commands:
 
 - The login is stored only in `~/.omp/agent/omp-gdrive/chatgpt-auth.json`, or in `chatgpt-auth.<profile>.json` under a non-default OMP profile. The directory is mode `0700` and the file `0600`.
 - It is separate from OMP's own logins and from other plugins' logins. `/login openai-codex` and OMP's auth database are neither read nor changed, so the plugin can use a different ChatGPT workspace than your model provider.
-- The access token is refreshed with the stored refresh token before it expires, and again after a `401` from the gateway. Neither case needs a new browser sign-in. Concurrent OMP processes pick up each other's rotated tokens from the file.
+- The access token is refreshed with the stored refresh token before it expires, and again after a `401` or `403` from the gateway. Neither case needs a new browser sign-in. Concurrent OMP processes pick up each other's rotated tokens from the file.
 - A refresh that returns a different ChatGPT workspace is rejected; run `/gdrive login` again to switch.
 
 ## Use
 
-Every Drive operation goes through the `xd://gdrive` device: `write` JSON to it. `read xd://gdrive` shows its usage.
+Every Drive operation goes through the discoverable `gdrive` Bash command. Pass a JSON argument object with `gdrive --json '<JSON>'`; for large JSON, pipe it to `gdrive -`.
 
-Reads have their own ops. `file` takes a file ID or any Drive, Docs, Sheets, or Slides URL. `folder` takes an ID, a URL, `root` for My Drive, or a shared drive's name.
+Reads have their own ops. `file` takes a file ID or any Drive, Docs, Sheets, or Slides URL. `folder` takes an ID, a URL, `root` for My Drive, or a shared drive's name. Each JSON object below is an argument to `gdrive`.
 
 ```json
 {"op":"search","query":"roadmap","kind":"doc","limit":10}
@@ -80,13 +80,13 @@ Reads have their own ops. `file` takes a file ID or any Drive, Docs, Sheets, or 
 - **Decks:** `slides` outlines a deck with each slide's `objectId`, which `batch_update_presentation` edits need.
 - **Metadata and comments:** `info` shows metadata, parent folders, and who has access. `comments` shows quoted text, resolution state, replies, and a `page` op when more exist.
 
-Any other Drive app tool is called directly:
+For any other Drive app tool, inspect its schema and pass the call through `gdrive`:
 
-```json
-{"op":"tools"}
-{"op":"schema","tool":"batch_update_document"}
-{"tool":"batch_update_document","args":{"document_url":"1AbC…","requests":[{"replaceAllText":{"containsText":{"text":"Q3","matchCase":true},"replaceText":"Q4"}}]}}
-{"op":"login"}
+```sh
+gdrive --json '{"op":"tools"}'
+gdrive --json '{"op":"schema","tool":"batch_update_document"}'
+gdrive --json '{"tool":"batch_update_document","args":{"document_url":"1AbC…","requests":[{"replaceAllText":{"containsText":{"text":"Q3","matchCase":true},"replaceText":"Q4"}}]}}'
+gdrive --json '{"op":"login"}'
 ```
 
 - `op` defaults to `call`. Tool names drop the gateway's `google_drive.` prefix; the prefixed form also works.
@@ -121,7 +121,7 @@ grep  "launch date" gdrive://id/1AbC…/
 - **Folders** list at most 1,000 items; the app's `list_folder` has no paging.
 - **Caching:** listings and texts are kept for 60 seconds, so a `grep` retried after OMP's 30-second grep timeout continues from where it stopped.
 - **Cost:** `grep` fetches every file under its path, and each fetch can show up in the file owner's audit log. Scope it to a folder, or find files with `gdrive://search` first. `glob` needs only folder listings.
-- **Read-only:** OMP refuses `write` and `edit` on `gdrive://`; changes go through `xd://gdrive`. The scheme is registered while an OMP session is running, and loading fails if another plugin already owns `gdrive://`.
+- **Read-only:** OMP refuses `write` and `edit` on `gdrive://`; changes go through the `gdrive` command. The scheme is registered while an OMP session is running, and loading fails if another plugin already owns `gdrive://`.
 
 ## Included prompts
 

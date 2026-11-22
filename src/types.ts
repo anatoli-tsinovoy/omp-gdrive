@@ -1,6 +1,6 @@
 /**
- * Shared contract between the core (credentials + ChatGPT apps gateway client) and the surfaces
- * (`xd://gdrive` device and the /gdrive command).
+ * Shared contract between the core (credentials + ChatGPT apps gateway client) and its
+ * `gdrive` tool, `gdrive://` protocol, and `/gdrive` command surfaces.
  */
 import type { OAuthController } from "@oh-my-pi/pi-ai/oauth/types";
 import type { MCPToolCallResult, MCPToolDefinition } from "@oh-my-pi/pi-coding-agent/mcp";

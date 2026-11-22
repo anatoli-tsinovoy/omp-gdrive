@@ -58,8 +58,8 @@ class FakeDriveCore implements DriveCore {
 	async closeAll(): Promise<void> { }
 }
 
-/** One device's worth of reads: the shared-drive memo persists across calls like it does in a session. */
-function device(core: FakeDriveCore) {
+/** One read instance's cache persists across calls for a single registered tool. */
+function toolReads(core: FakeDriveCore) {
 	const reads = createDriveReads(core);
 	return async (input: DriveToolInput) => (await executeDriveOperation(core, input, { reads })).content.map(block => block.text).join("");
 }
@@ -77,7 +77,7 @@ test("listed files carry the op that opens them by kind", async () => {
 			],
 		}),
 	);
-	const listing = await device(core)({ op: "recent", limit: 4 });
+	const listing = await toolReads(core)({ op: "recent", limit: 4 });
 	expect(core.calls).toEqual([{ name: "recent_documents", args: { top_k: 4 } }]);
 	expect(listing.split("\n")).toEqual([
 		"Recently modified (4):",
@@ -90,7 +90,7 @@ test("listed files carry the op that opens them by kind", async () => {
 
 test("search ANDs the kind's MIME filter with a raw filter and passes Drive's parameter names", async () => {
 	const core = new FakeDriveCore();
-	const run = device(core);
+	const run = toolReads(core);
 	await run({ op: "search", query: " roadmap ", kind: "sheet", filter: "modifiedTime > '2026-01-01T00:00:00'", limit: 5, viewed: true });
 	await run({ op: "search", kind: "image" });
 	expect(core.calls).toEqual([
@@ -111,7 +111,7 @@ test("folders resolve from root, ids, URLs, and shared-drive names; drive names 
 	const core = new FakeDriveCore();
 	core.responses.set("list_drives", payload({ drives: [{ id: "0ADrive", name: "Team Space", capabilities: {} }, { id: "0BOther", name: "Archive" }] }));
 	core.responses.set("list_folder", payload({ files: [] }));
-	const run = device(core);
+	const run = toolReads(core);
 	await run({ op: "list" });
 	await run({ op: "list", folder: "1miXK_g7UxklRH32BE7kNmqCDh4ZGxO38" });
 	await run({ op: "list", folder: "https://drive.google.com/drive/folders/abc" });
@@ -133,7 +133,7 @@ test("folders resolve from root, ids, URLs, and shared-drive names; drive names 
 test("a full folder page says more items exist", async () => {
 	const core = new FakeDriveCore();
 	core.responses.set("list_folder", payload({ files: [{ id: "a1", title: "A", mime_type: DOC }, { id: "b1", title: "B", mime_type: DOC }] }));
-	expect(await device(core)({ op: "list", limit: 2 })).toEndWith("[First 2 items; raise `limit` for more.]");
+	expect(await toolReads(core)({ op: "list", limit: 2 })).toEndWith("[First 2 items; raise `limit` for more.]");
 });
 
 test("read turns an id into a Drive URL and pages long text with the exact continue op", async () => {
@@ -141,7 +141,7 @@ test("read turns an id into a Drive URL and pages long text with the exact conti
 	const line = `${"x".repeat(99)}\n`;
 	const content = `\uFEFF${line.repeat(400).replace(/\n/gu, "\r\n")}`;
 	core.responses.set("fetch", payload({ title: "Notes", content, mime_type: "text/plain", url: "https://drive.google.com/file/d/doc1/view" }));
-	const run = device(core);
+	const run = toolReads(core);
 
 	const first = await run({ op: "read", file: "doc1" });
 	expect(core.calls[0]).toEqual({ name: "fetch", args: { url: "https://drive.google.com/file/d/doc1/view" } });
@@ -165,7 +165,7 @@ test("reading a folder lists it; reading an exported sheet points at the sheet o
 			? payload({ title: "Meet", mime_type: FOLDER, content: JSON.stringify({ files: [{ id: "sub1", title: "Recording", mime_type: FOLDER }] }) })
 			: payload({ title: "People", mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content: "a,b\n1,2" }),
 	);
-	const run = device(core);
+	const run = toolReads(core);
 	expect(await run({ op: "read", file: "https://drive.google.com/drive/folders/f1" })).toBe(
 		'Folder Meet (1):\n- Recording — Folder · `{"op":"list","folder":"sub1"}`',
 	);
@@ -185,7 +185,7 @@ test("sheet lists tabs with ready ranges and reads a range as TSV", async () => 
 		}),
 	);
 	core.responses.set("get_spreadsheet_range", payload({ range: "'X'!A1:C2", values: [["Name", "Note"], ["Ada", "line\nbreak\tand tab", null]] }));
-	const run = device(core);
+	const run = toolReads(core);
 
 	const tabs = await run({ op: "sheet", file: "s1" });
 	expect(tabs).toContain(`- O'Reilly list — 12×27 · \`{"op":"sheet","file":"s1","range":"'O''Reilly list'!A1:AA12"}\``);
@@ -218,7 +218,7 @@ test("comments show quotes, status, replies, and the next-page op", async () => 
 			],
 		}),
 	);
-	const text = await device(core)({ op: "comments", file: "d1", limit: 1 });
+	const text = await toolReads(core)({ op: "comments", file: "d1", limit: 1 });
 	expect(core.calls).toEqual([{ name: "get_file_comments", args: { id: "d1", page_size: 1 } }]);
 	expect(text).toBe(
 		[
@@ -241,5 +241,5 @@ test("Drive errors surface as the app's error text", async () => {
 		structuredContent: { error: "HTTPError: 404: Not Found", error_code: "NOT_FOUND" },
 		isError: true,
 	});
-	await expect(device(core)({ op: "read", file: "missing1234" })).rejects.toThrow("HTTPError: 404: Not Found (NOT_FOUND)");
+	await expect(toolReads(core)({ op: "read", file: "missing1234" })).rejects.toThrow("HTTPError: 404: Not Found (NOT_FOUND)");
 });

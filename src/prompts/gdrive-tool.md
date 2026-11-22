@@ -1,4 +1,5 @@
 Google Drive, Docs, Sheets, and Slides through the ChatGPT Google Drive app. Reads (`file` is a file id or any Drive/Docs/Sheets/Slides URL); every listed item carries the exact op that opens it:
+Invoke this discoverable tool through Bash as `gdrive --json '<argument object>'`; pipe large JSON to `gdrive -`.
 - `{"op":"search","query":"roadmap","kind":"doc","limit":20}` searches by keywords (omit `query` to browse); `kind` is doc, sheet, slides, pdf, folder, or image; `filter` adds a raw Drive `q` expression (`modifiedTime > '2026-01-01T00:00:00'`, `'me' in owners`); `viewed:true` keeps files you opened.
 - `{"op":"recent","limit":10}` lists recently modified files; `{"op":"drives"}` lists My Drive and shared drives.
 - `{"op":"list","folder":"root"}` lists a folder: id, URL, `root`, or a shared drive's name.
