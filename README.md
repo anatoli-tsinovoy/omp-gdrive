@@ -8,7 +8,7 @@ An OMP plugin that reaches Google Drive, Docs, Sheets, and Slides through the **
 omp plugin install github:anatoli-tsinovoy/omp-gdrive
 ```
 
-OMP accepts `github:user/repo` plugin sources. Restart OMP if the current session does not discover the plugin. Requires OMP 19.1.0 or newer.
+OMP accepts `github:user/repo` plugin sources. Restart OMP if the current session does not discover the plugin. Requires OMP 19.2.1 or newer.
 
 ## Setup
 
@@ -23,11 +23,7 @@ OMP accepts `github:user/repo` plugin sources. Restart OMP if the current sessio
 
 Run `/gdrive login` in OMP.
 
-Like OMP's own `/login openai-codex`, it opens a sign-in dialog and tries to open your browser. The dialog shows:
-
-- the full ChatGPT authorization URL
-- a local shortcut, `http://localhost:1455/launch`, which works on this machine only
-- a paste field
+It shows a notice with the full ChatGPT authorization URL and, when available, a local shortcut (`http://localhost:1455/launch`, this machine only). In the TUI it opens your browser; if needed, paste the redirect URL or authorization code at the input prompt.
 
 Pick the same account and ChatGPT workspace as in step 1.
 
@@ -37,7 +33,7 @@ On a headless or remote host (SSH, containers):
 
 1. Open the full authorization URL in a browser on any machine.
 2. After you sign in, the browser lands on `http://localhost:1455/auth/callback?code=…`, which won't load.
-3. Copy that whole URL from the address bar and paste it into the dialog. The authorization code alone also works.
+3. Copy that whole URL from the address bar and paste it at the prompt. The authorization code alone also works.
 
 Other commands:
 
